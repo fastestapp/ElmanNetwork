@@ -71,7 +71,9 @@ class ElmanNetwork:
         """
         Derivative of sigmoid function
         Args: y: Output of sigmoid function (already computed)
-        Returns: Derivative: y * (1 - y)
+            
+        Returns:
+            Derivative: y * (1 - y)
         """
         return y * (1 - y)
     
@@ -305,7 +307,6 @@ def generate_xor_sequence(length=100, seed=None):
         sequence.append(sequence[i-1] ^ sequence[i-2])
     
     return sequence
-
 def main():
     """
     Main function demonstrating the Elman network
