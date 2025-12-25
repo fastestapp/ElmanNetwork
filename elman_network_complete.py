@@ -1,80 +1,70 @@
 """
-Complete Elman Network Implementation with 4 Hidden Units
+Extended Elman Network Implementation
 
-A fully functional Simple Recurrent Network (Elman Network) for sequence prediction.
+Supports both:
+1. XOR task (1-bit input/output)
+2. Consonant-Vowel prediction task (6-bit input/output)
 
-Total parameters: 29
-- W_ih: 4 weights (Input → Hidden)
-- W_hh: 16 weights (Context → Hidden, 4x4 matrix)  
-- W_ho: 4 weights (Hidden → Output)
-- b_h: 4 biases (Hidden layer)
-- b_o: 1 bias (Output layer)
+Usage:
+    python elman_network_extended.py          # Run both tasks (default)
+    python elman_network_extended.py XOR      # Run only XOR task
+    python elman_network_extended.py CV       # Run only CV task
 """
 
 import numpy as np
 
 class ElmanNetwork:
     """
-    Simple Recurrent Network (Elman Network) with 4 hidden units
+    Flexible Simple Recurrent Network (Elman Network)
     
     Architecture:
-    - 1 input unit
-    - 4 hidden units
-    - 4 context units (copy of previous hidden state)
-    - 1 output unit
+    - n_input input units
+    - n_hidden hidden units
+    - n_hidden context units (copy of previous hidden state)
+    - n_output output units
     """
     
-    def __init__(self, learning_rate=0.1):
+    def __init__(self, n_input, n_hidden, n_output, learning_rate=0.1):
         """
-        Initialize the Elman network with 4 hidden units
+        Initialize the Elman network
         
         Args:
+            n_input: Number of input units
+            n_hidden: Number of hidden units
+            n_output: Number of output units
             learning_rate: Learning rate for gradient descent (default: 0.1)
         """
+        self.n_input = n_input
+        self.n_hidden = n_hidden
+        self.n_output = n_output
         self.learning_rate = learning_rate
         
-        # W_ih: Input → Hidden (4 weights)
-        # Using specific values from the essay for consistency
-        self.W_ih = np.array([[0.5], [0.3], [0.8], [0.2]])
+        # Initialize weights with small random values
+        # W_ih: Input → Hidden (n_hidden x n_input)
+        self.W_ih = np.random.randn(n_hidden, n_input) * 0.1
         
-        # W_hh: Context → Hidden (4x4 matrix = 16 weights)
-        self.W_hh = np.array([
-            [0.1, 0.2, 0.0, 0.1],
-            [0.3, 0.1, 0.2, 0.0],
-            [0.0, 0.2, 0.3, 0.1],
-            [0.2, 0.0, 0.1, 0.2]
-        ])
+        # W_hh: Context → Hidden (n_hidden x n_hidden matrix)
+        self.W_hh = np.random.randn(n_hidden, n_hidden) * 0.1
         
-        # W_ho: Hidden → Output (4 weights)
-        self.W_ho = np.array([[0.4, 0.3, 0.5, 0.2]])
+        # W_ho: Hidden → Output (n_output x n_hidden)
+        self.W_ho = np.random.randn(n_output, n_hidden) * 0.1
         
-        # b_h: Hidden biases (4 values)
-        self.b_h = np.array([[0.1], [0.1], [0.1], [0.1]])
+        # b_h: Hidden biases (n_hidden x 1)
+        self.b_h = np.zeros((n_hidden, 1))
         
-        # b_o: Output bias (1 value)
-        self.b_o = np.array([[0.0]])
+        # b_o: Output bias (n_output x 1)
+        self.b_o = np.zeros((n_output, 1))
         
         # Context units (initialized to zeros)
-        self.context = np.zeros((4, 1))
+        self.context = np.zeros((n_hidden, 1))
     
     def sigmoid(self, x):
-        """
-        Sigmoid activation function
-        Args: x: Input value or array
-        Returns: Sigmoid of x: 1 / (1 + e^(-x))
-        """
-        # Clip to avoid overflow
+        """Sigmoid activation function"""
         x_clipped = np.clip(x, -500, 500)
         return 1 / (1 + np.exp(-x_clipped))
     
     def sigmoid_derivative(self, y):
-        """
-        Derivative of sigmoid function
-        Args: y: Output of sigmoid function (already computed)
-            
-        Returns:
-            Derivative: y * (1 - y)
-        """
+        """Derivative of sigmoid function"""
         return y * (1 - y)
     
     def forward(self, x):
@@ -82,14 +72,19 @@ class ElmanNetwork:
         Forward pass: compute hidden state and output for one time step
         
         Args:
-            x: Input value (scalar, will be converted to array)
+            x: Input vector (n_input x 1) or scalar (for 1D input)
             
         Returns:
-            output: Predicted output (scalar)
-            hidden: Hidden state (4x1 array)
+            output: Predicted output (n_output x 1)
+            hidden: Hidden state (n_hidden x 1)
         """
-        # Convert input to column vector
-        x_vec = np.array([[x]])
+        # Convert input to column vector if needed
+        if np.isscalar(x):
+            x_vec = np.array([[x]])
+        elif x.ndim == 1:
+            x_vec = x.reshape(-1, 1)
+        else:
+            x_vec = x
         
         # Compute hidden layer input
         # hidden_input = W_ih * x + W_hh * context + b_h
@@ -105,30 +100,39 @@ class ElmanNetwork:
         # Apply sigmoid activation
         output = self.sigmoid(output_input)
         
-        # Return scalar output and hidden state
-        return output[0, 0], hidden
+        return output, hidden
     
     def backward(self, x, hidden, output, target):
         """
         Backward pass: compute gradients and update weights
         
         Args:
-            x: Input that was used (scalar)
-            hidden: Hidden state from forward pass (4x1 array)
-            output: Output from forward pass (scalar)
-            target: Target/desired output (scalar)
+            x: Input that was used (n_input x 1) or scalar
+            hidden: Hidden state from forward pass (n_hidden x 1)
+            output: Output from forward pass (n_output x 1)
+            target: Target/desired output (n_output x 1) or scalar
             
         Returns:
-            error: Difference between target and output
+            error: Mean squared error
         """
         # Convert scalars to proper shapes
-        x_vec = np.array([[x]])
-        output_vec = np.array([[output]])
-        target_vec = np.array([[target]])
+        if np.isscalar(x):
+            x_vec = np.array([[x]])
+        elif x.ndim == 1:
+            x_vec = x.reshape(-1, 1)
+        else:
+            x_vec = x
+            
+        if np.isscalar(target):
+            target_vec = np.array([[target]])
+        elif target.ndim == 1:
+            target_vec = target.reshape(-1, 1)
+        else:
+            target_vec = target
         
         # 1. Compute output layer error
-        error = output_vec - target_vec
-        delta_o = error * self.sigmoid_derivative(output_vec)
+        error = output - target_vec
+        delta_o = error * self.sigmoid_derivative(output)
         
         # 2. Compute hidden layer gradients
         delta_h = np.dot(self.W_ho.T, delta_o) * self.sigmoid_derivative(hidden)
@@ -148,35 +152,28 @@ class ElmanNetwork:
         # 7. Update b_h: Hidden biases
         self.b_h -= self.learning_rate * delta_h
         
-        # Return error as scalar
-        return error[0, 0]
+        # Return mean squared error
+        return np.mean(error ** 2)
     
     def update_context(self, hidden):
-        """
-        Update context units with current hidden state
-        
-        Args:
-            hidden: Current hidden state (4x1 array)
-        """
+        """Update context units with current hidden state"""
         self.context = hidden.copy()
     
     def reset_context(self):
-        """
-        Reset context to zeros (call at start of new sequence)
-        """
-        self.context = np.zeros((4, 1))
+        """Reset context to zeros (call at start of new sequence)"""
+        self.context = np.zeros((self.n_hidden, 1))
     
     def train_step(self, x, target):
         """
         Complete training step: forward + backward + update context
         
         Args:
-            x: Input value (scalar)
-            target: Target output (scalar)
+            x: Input value or vector
+            target: Target output value or vector
             
         Returns:
             output: Predicted output
-            error: Prediction error
+            error: Prediction error (MSE)
         """
         # Forward pass
         output, hidden = self.forward(x)
@@ -189,12 +186,12 @@ class ElmanNetwork:
         
         return output, error
     
-    def train_sequence(self, sequence, num_epochs=100, verbose=True):
+    def train_sequence(self, sequence, num_epochs=600, verbose=True):
         """
         Train on a complete sequence for multiple epochs
         
         Args:
-            sequence: List of values (e.g., [0, 1, 1, 0, 1, ...])
+            sequence: List of input values/vectors
             num_epochs: Number of times to iterate through sequence
             verbose: Whether to print progress
             
@@ -216,8 +213,8 @@ class ElmanNetwork:
                 
                 output, error = self.train_step(x, target)
                 
-                # Accumulate squared error
-                total_loss += error ** 2
+                # Accumulate error
+                total_loss += error
             
             # Calculate average loss
             avg_loss = total_loss / (len(sequence) - 1)
@@ -234,10 +231,10 @@ class ElmanNetwork:
         Predict next value for each position in sequence (without training)
         
         Args:
-            sequence: List of values
+            sequence: List of values/vectors
             
         Returns:
-            predictions: List of predicted values
+            predictions: List of predicted values/vectors
         """
         # Reset context
         self.reset_context()
@@ -255,139 +252,362 @@ class ElmanNetwork:
             self.update_context(hidden)
         
         return predictions
-    
-    def get_weights(self):
-        """
-        Get all network weights as a dictionary
-        
-        Returns:
-            Dictionary with all 29 parameters
-        """
-        return {
-            'W_ih': self.W_ih.copy(),
-            'W_hh': self.W_hh.copy(),
-            'W_ho': self.W_ho.copy(),
-            'b_h': self.b_h.copy(),
-            'b_o': self.b_o.copy()
-        }
-    
-    def set_weights(self, weights):
-        """
-        Set network weights from a dictionary
-        
-        Args:
-            weights: Dictionary with keys W_ih, W_hh, W_ho, b_h, b_o
-        """
-        self.W_ih = weights['W_ih'].copy()
-        self.W_hh = weights['W_hh'].copy()
-        self.W_ho = weights['W_ho'].copy()
-        self.b_h = weights['b_h'].copy()
-        self.b_o = weights['b_o'].copy()
+
 
 # ============================================================================
-# Example Usage and Testing
+# XOR Task Functions
 # ============================================================================
+
 def generate_xor_sequence(length=100, seed=None):
     """
-    Generate XOR sequence where each bit is XOR of previous two bits
+    Generate XOR sequence in Elman's format: groups of (bit1, bit2, bit1 XOR bit2)
     
     Args:
-        length: Total length of sequence
+        length: Total length of sequence (will be rounded down to nearest multiple of 3)
         seed: Random seed for reproducibility
         
     Returns:
-        sequence: List of bits (0s and 1s)
+        sequence: List of bits (0s and 1s) in groups of 3
     """
     if seed is not None:
         np.random.seed(seed)
     
-    sequence = [np.random.randint(0, 2), np.random.randint(0, 2)]
+    sequence = []
+    num_groups = length // 3
     
-    for i in range(2, length):
-        sequence.append(sequence[i-1] ^ sequence[i-2])
+    for _ in range(num_groups):
+        bit1 = np.random.randint(0, 2)
+        bit2 = np.random.randint(0, 2)
+        xor_result = bit1 ^ bit2
+        
+        sequence.extend([bit1, bit2, xor_result])
     
     return sequence
-def main():
+
+
+# ============================================================================
+# Consonant-Vowel Task Functions
+# ============================================================================
+
+# Letter representations as 6-bit vectors
+# Bits: [Consonant, Vowel, Interrupted, High, Back, Voiced]
+LETTERS = {
+    'b': np.array([1, 0, 1, 0, 0, 1]),
+    'd': np.array([1, 0, 1, 1, 0, 1]),
+    'g': np.array([1, 0, 1, 0, 1, 1]),
+    'a': np.array([0, 1, 0, 0, 1, 1]),
+    'i': np.array([0, 1, 0, 1, 0, 1]),
+    'u': np.array([0, 1, 0, 1, 1, 1])
+}
+
+# Consonant-vowel replacement rules
+CV_RULES = {
+    'b': 'ba',      # b followed by 1 a
+    'd': 'dii',     # d followed by 2 i's
+    'g': 'guuu'     # g followed by 3 u's
+}
+
+def generate_cv_sequence(length=1000, seed=None):
     """
-    Main function demonstrating the Elman network
-    """
-    print("=" * 70)
-    print("Elman Network with 4 Hidden Units - Complete Implementation")
-    print("=" * 70)
-    print()
+    Generate consonant-vowel sequence following Elman's rules
     
-    # Create network
-    print("Creating Elman network...")
-    network = ElmanNetwork(learning_rate=0.1)
-    print(f"Total parameters: 29 (W_ih:4, W_hh:16, W_ho:4, b_h:4, b_o:1)")
-    print()
+    Args:
+        length: Approximate length of final sequence
+        seed: Random seed for reproducibility
+        
+    Returns:
+        sequence: List of 6-bit vectors representing letters
+        letter_sequence: List of letter names (for visualization)
+    """
+    if seed is not None:
+        np.random.seed(seed)
+    
+    consonants = ['b', 'd', 'g']
+    
+    # Generate random consonant sequence
+    num_consonants = length // 3  # Rough estimate
+    consonant_seq = [consonants[np.random.randint(0, 3)] for _ in range(num_consonants)]
+    
+    # Expand using CV rules
+    letter_sequence = []
+    for c in consonant_seq:
+        letter_sequence.extend(list(CV_RULES[c]))
+    
+    # Convert to 6-bit vectors
+    vector_sequence = [LETTERS[letter] for letter in letter_sequence]
+    
+    return vector_sequence, letter_sequence
+
+
+def analyze_bit_errors(predictions, targets, bit_names=None):
+    """
+    Analyze prediction errors on a bit-by-bit basis
+    
+    Args:
+        predictions: List of predicted vectors
+        targets: List of target vectors
+        bit_names: Optional list of names for each bit
+        
+    Returns:
+        bit_errors: Array of shape (n_bits, n_predictions) with squared errors
+    """
+    n_bits = predictions[0].shape[0]
+    n_predictions = len(predictions)
+    
+    bit_errors = np.zeros((n_bits, n_predictions))
+    
+    for t in range(n_predictions):
+        pred = predictions[t].flatten()
+        target = targets[t].flatten()
+        bit_errors[:, t] = (pred - target) ** 2
+    
+    return bit_errors
+
+
+# ============================================================================
+# Example Usage
+# ============================================================================
+
+def test_xor_task():
+    """Test the XOR task"""
+    print("=" * 70)
+    print("XOR Task Test")
+    print("=" * 70)
+    
+    # Create network for XOR (1 input, 4 hidden, 1 output)
+    network = ElmanNetwork(n_input=1, n_hidden=4, n_output=1, learning_rate=0.1)
     
     # Generate XOR sequence
-    print("Generating XOR sequence (100 bits)...")
-    sequence = generate_xor_sequence(100, seed=42)
-    print(f"First 20 bits: {sequence[:20]}")
+    sequence = generate_xor_sequence(3000, seed=42)
+    print(f"First 15 bits: {sequence[:15]}")
     print()
     
     # Train network
-    print("Training network...")
-    losses = network.train_sequence(sequence, num_epochs=100, verbose=True)
+    print("Training...")
+    losses = network.train_sequence(sequence, num_epochs=600, verbose=True)
     print()
     
     # Test predictions
-    print("Testing predictions on first 20 bits...")
     test_sequence = sequence[:20]
+    network.reset_context()
     predictions = network.predict_sequence(test_sequence)
     
-    print("\nPredictions vs Actual:")
-    print("Time | Input | Actual Next | Predicted | Rounded | Match")
-    print("-" * 65)
+    print("Actual Output vs Expected Output:")
+    print("Time | Input | Actual Out | Rounded Out | Expected | Match")
+    print("-" * 60)
     
     correct = 0
     for i in range(len(predictions)):
         input_val = test_sequence[i]
-        actual = test_sequence[i + 1]
-        predicted = predictions[i]
-        rounded = 1 if predicted > 0.5 else 0
-        match = "✓" if actual == rounded else "✗"
-        
-        if actual == rounded:
+        expect = test_sequence[i + 1]
+        actual = predictions[i][0, 0]
+        actual_rounded = 1 if actual > 0.5 else 0
+        match = "✓" if expect == actual_rounded else "✗"
+
+        if expect == actual_rounded:
             correct += 1
-        
-        print(f" {i:2d}  |   {input_val}   |      {actual}      |  {predicted:.4f}   |    {rounded}    |  {match}")
-    
+
+        print(f" {i:2d}  |   {input_val}   |   {actual:.4f}   |      {actual_rounded}      |     {expect}    |  {match}")
+
     accuracy = (correct / len(predictions)) * 100
-    print("-" * 65)
+    print("-" * 60)
     print(f"Accuracy: {correct}/{len(predictions)} = {accuracy:.1f}%")
     print()
     
-    # Show final weights
-    weights = network.get_weights()
-    print("Final weights (first few):")
-    print(f"W_ih: {weights['W_ih'].flatten()}")
-    print(f"W_ho: {weights['W_ho'].flatten()}")
+    return network, losses
+
+
+def test_cv_task():
+    """Test the Consonant-Vowel task"""
+    print("=" * 70)
+    print("Consonant-Vowel Task Test")
+    print("=" * 70)
+    
+    # Create network for CV task (6 input, 20 hidden, 6 output)
+    network = ElmanNetwork(n_input=6, n_hidden=20, n_output=6, learning_rate=0.1)
+    
+    # Generate CV sequence
+    sequence, letters = generate_cv_sequence(300, seed=42)
+    print(f"First 20 letters: {''.join(letters[:20])}")
+    print(f"Sequence length: {len(sequence)} vectors")
     print()
     
-    # Plot training loss
+    # Train network
+    print("Training...")
+    losses = network.train_sequence(sequence, num_epochs=200, verbose=True)
+    print()
+    
+    # Test predictions on new sequence
+    test_sequence, test_letters = generate_cv_sequence(60, seed=123)
+    network.reset_context()
+    predictions = network.predict_sequence(test_sequence)
+    
+    # Calculate errors
+    targets = test_sequence[1:]
+    errors = [np.mean((predictions[i] - targets[i])**2) for i in range(len(predictions))]
+    
+    print("Prediction errors for first 20 time steps:")
+    print("Time | Letter | Next  | Error")
+    print("-" * 40)
+    
+    for i in range(min(20, len(errors))):
+        print(f" {i:2d}  |   {test_letters[i]}    |   {test_letters[i+1]}   | {errors[i]:.6f}")
+    
+    print()
+    
+    # Analyze bit-by-bit errors
+    bit_names = ['Consonant', 'Vowel', 'Interrupted', 'High', 'Back', 'Voiced']
+    bit_errors = analyze_bit_errors(predictions, targets, bit_names)
+    
+    print("Average error per bit feature:")
+    for i, name in enumerate(bit_names):
+        avg_error = np.mean(bit_errors[i, :])
+        print(f"  {name:12s}: {avg_error:.6f}")
+    
+    print()
+    
+    return network, losses, bit_errors
+
+
+def main(task='both'):
+    """
+    Run Elman network tasks
+    
+    Args:
+        task: Which task(s) to run - 'XOR', 'CV', or 'both' (default)
+    """
+    task = task.upper()
+    
+    if task not in ['XOR', 'CV', 'BOTH']:
+        print(f"Invalid task '{task}'. Must be 'XOR', 'CV', or 'both'")
+        return
+    
+    xor_network = None
+    xor_losses = None
+    cv_network = None
+    cv_losses = None
+    bit_errors = None
+    
+    # Run XOR task if requested
+    if task in ['XOR', 'BOTH']:
+        xor_network, xor_losses = test_xor_task()
+        
+        if task == 'BOTH':
+            print("\n" + "=" * 70 + "\n")
+    
+    # Run CV task if requested
+    if task in ['CV', 'BOTH']:
+        cv_network, cv_losses, bit_errors = test_cv_task()
+    
+    # Plot results if matplotlib available
     try:
         import matplotlib.pyplot as plt
+        import os
         
-        plt.figure(figsize=(10, 5))
-        plt.plot(losses)
-        plt.xlabel('Epoch')
-        plt.ylabel('Average Loss')
-        plt.title('Training Loss over Time')
-        plt.grid(True, alpha=0.3)
+        # Create outputs directory if it doesn't exist
+        # Try /mnt/user-data/outputs first (for Claude), fall back to local ./outputs
+        output_dir = '/mnt/user-data/outputs' if os.path.exists('/mnt/user-data') else './outputs'
+        os.makedirs(output_dir, exist_ok=True)
         
-        # Prompt user for save location
-        print("\nWhere would you like to save the training plot?")
-        save_path = input("Enter file path (or press Enter for default '/mnt/user-data/outputs/elman_4unit_training.png'): ").strip()
-        print("\nsave_path:", save_path)
-        if not save_path:
-            save_path = '/mnt/user-data/outputs/elman_4unit_training.png'
+        if task == 'BOTH':
+            # Plot both tasks
+            fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+            
+            # XOR training loss
+            axes[0, 0].plot(xor_losses)
+            axes[0, 0].set_xlabel('Epoch')
+            axes[0, 0].set_ylabel('Loss')
+            axes[0, 0].set_title('XOR Task: Training Loss')
+            axes[0, 0].grid(True, alpha=0.3)
+            
+            # CV training loss
+            axes[0, 1].plot(cv_losses)
+            axes[0, 1].set_xlabel('Epoch')
+            axes[0, 1].set_ylabel('Loss')
+            axes[0, 1].set_title('CV Task: Training Loss')
+            axes[0, 1].grid(True, alpha=0.3)
+            
+            # CV bit errors (like Figure 5 from Elman)
+            bit_names = ['Consonant', 'Vowel', 'Interrupted', 'High', 'Back', 'Voiced']
+            
+            # Plot bit 0 (Consonant)
+            axes[1, 0].plot(bit_errors[0, :30], 'o-', markersize=4)
+            axes[1, 0].set_xlabel('Time Step')
+            axes[1, 0].set_ylabel('Squared Error')
+            axes[1, 0].set_title(f'Bit 1: {bit_names[0]}')
+            axes[1, 0].grid(True, alpha=0.3)
+            
+            # Plot bit 3 (High)
+            axes[1, 1].plot(bit_errors[3, :30], 'o-', markersize=4)
+            axes[1, 1].set_xlabel('Time Step')
+            axes[1, 1].set_ylabel('Squared Error')
+            axes[1, 1].set_title(f'Bit 4: {bit_names[3]}')
+            axes[1, 1].grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            
+            save_path = os.path.join(output_dir, 'elman_tasks_comparison.png')
+            plt.savefig(save_path, dpi=150, bbox_inches='tight')
+            print(f"\nPlots saved to: {save_path}")
+            
+        elif task == 'XOR':
+            # Plot only XOR
+            plt.figure(figsize=(10, 5))
+            plt.plot(xor_losses)
+            plt.xlabel('Epoch')
+            plt.ylabel('Loss')
+            plt.title('XOR Task: Training Loss')
+            plt.grid(True, alpha=0.3)
+            
+            save_path = os.path.join(output_dir, 'elman_xor_training.png')
+            plt.savefig(save_path, dpi=150, bbox_inches='tight')
+            print(f"\nPlot saved to: {save_path}")
+            
+        elif task == 'CV':
+            # Plot only CV
+            fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+            
+            # CV training loss
+            axes[0].plot(cv_losses)
+            axes[0].set_xlabel('Epoch')
+            axes[0].set_ylabel('Loss')
+            axes[0].set_title('CV Task: Training Loss')
+            axes[0].grid(True, alpha=0.3)
+            
+            # CV bit errors (like Figure 5 from Elman)
+            bit_names = ['Consonant', 'Vowel', 'Interrupted', 'High', 'Back', 'Voiced']
+            
+            # Plot bit 0 (Consonant)
+            axes[1].plot(bit_errors[0, :30], 'o-', markersize=4)
+            axes[1].set_xlabel('Time Step')
+            axes[1].set_ylabel('Squared Error')
+            axes[1].set_title(f'Bit 1: {bit_names[0]}')
+            axes[1].grid(True, alpha=0.3)
+            
+            # Plot bit 3 (High)
+            axes[2].plot(bit_errors[3, :30], 'o-', markersize=4)
+            axes[2].set_xlabel('Time Step')
+            axes[2].set_ylabel('Squared Error')
+            axes[2].set_title(f'Bit 4: {bit_names[3]}')
+            axes[2].grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            
+            save_path = os.path.join(output_dir, 'elman_cv_analysis.png')
+            plt.savefig(save_path, dpi=150, bbox_inches='tight')
+            print(f"\nPlots saved to: {save_path}")
         
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
-        print(f"Training plot saved to: {save_path}")
     except ImportError:
-        print("Matplotlib not available, skipping plot")
+        print("\nMatplotlib not available, skipping plots")
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    
+    # Check for command line argument
+    if len(sys.argv) > 1:
+        task_arg = sys.argv[1]
+    else:
+        task_arg = 'xor'
+    
+    main(task=task_arg)
