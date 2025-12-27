@@ -12,6 +12,7 @@ Usage:
 """
 
 import numpy as np
+from datetime import datetime
 
 class ElmanNetwork:
     """
@@ -202,7 +203,7 @@ class ElmanNetwork:
         
         for epoch in range(num_epochs):
             # Reset context at start of sequence
-            self.reset_context()
+            self.reset_context() #Reset context to zeros
             
             total_loss = 0
             
@@ -228,7 +229,7 @@ class ElmanNetwork:
     
     def predict_sequence(self, sequence):
         """
-        Predict next value for each position in sequence (without training)
+        Use the trained network to predict next value for each position in sequence.
         
         Args:
             sequence: List of values/vectors
@@ -237,7 +238,7 @@ class ElmanNetwork:
             predictions: List of predicted values/vectors
         """
         # Reset context
-        self.reset_context()
+        self.reset_context() #Reset context to zeros
         
         predictions = []
         
@@ -338,6 +339,152 @@ def generate_cv_sequence(length=1000, seed=None):
     
     return vector_sequence, letter_sequence
 
+def analyze_hidden_activations(network, sequence, letters, max_steps=30):
+    """
+    Analyze hidden unit activations over time (recreates Elman 1990 Figure 4)
+    
+    Args:
+        network: Trained ElmanNetwork
+        sequence: List of input vectors
+        letters: Corresponding letter names
+        max_steps: Number of time steps to analyze
+        
+    Returns:
+        activations: Array of shape (n_hidden, max_steps) with hidden unit activations
+    """
+    network.reset_context()
+    
+    n_steps = min(max_steps, len(sequence))
+    activations = np.zeros((network.n_hidden, n_steps))
+    
+    for t in range(n_steps):
+        x = sequence[t]
+        output, hidden = network.forward(x)
+        
+        # Store hidden activations (flatten to 1D)
+        activations[:, t] = hidden.flatten()
+        
+        # Update context for next step
+        network.update_context(hidden)
+    
+    return activations
+
+def plot_figure4_prediction_errors(test_letters, errors, max_steps=30):
+    """
+    Recreate Figure 4 from Elman (1990): Prediction errors over time
+    Shows prediction error for each letter in the CV sequence
+    
+    Args:
+        test_letters: List of letter names in sequence
+        errors: List of prediction errors (MSE) for each time step
+        max_steps: Number of time steps to show
+    """
+    import matplotlib.pyplot as plt
+    import os
+    from datetime import datetime
+    
+    n_steps = min(max_steps, len(errors))
+    
+    # Create figure
+    plt.figure(figsize=(14, 6))
+    
+    # Plot errors as points connected by lines
+    plt.plot(range(n_steps), errors[:n_steps], 'o-', markersize=6, linewidth=1.5)
+    
+    # Set up x-axis with letter labels
+    plt.xticks(range(n_steps), test_letters[:n_steps], fontsize=10)
+    plt.xlabel('Letter in Sequence', fontsize=12)
+    plt.ylabel('Mean Squared Error', fontsize=12)
+    plt.title('Prediction Error by Letter Position (Elman 1990, Figure 4)', 
+              fontsize=14, fontweight='bold')
+    plt.grid(True, alpha=0.3, axis='y')
+    
+    # Add horizontal line at mean error
+    mean_error = np.mean(errors[:n_steps])
+    plt.axhline(y=mean_error, color='r', linestyle='--', alpha=0.5, 
+                label=f'Mean Error: {mean_error:.4f}')
+    plt.legend()
+    
+    plt.tight_layout()
+    
+    # Save
+    output_dir = '/mnt/user-data/outputs' if os.path.exists('/mnt/user-data') else './outputs'
+    os.makedirs(output_dir, exist_ok=True)
+    
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'elman_figure4_prediction_errors_{timestamp}.png'
+    save_path = os.path.join(output_dir, filename)
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    print(f"\nFigure 4 (Prediction Errors) saved to: {save_path}")
+    
+    plt.show()
+
+def plot_hidden_unit_activations(network, sequence, letters, max_steps=30):
+    """
+    Recreate Figure 4 from Elman (1990): Hidden unit activations over time
+    Shows how different hidden units respond to consonant-vowel patterns
+    
+    Args:
+        network: Trained ElmanNetwork
+        sequence: CV sequence vectors
+        letters: Letter names for labeling
+        max_steps: Number of time steps to show
+    """
+    import matplotlib.pyplot as plt
+    
+    # Get hidden activations
+    activations = analyze_hidden_activations(network, sequence, letters, max_steps)
+    
+    # Create figure with subplots for each hidden unit
+    n_hidden = network.n_hidden
+    n_rows = 4
+    n_cols = 5  # For 20 hidden units
+    
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(16, 10))
+    fig.suptitle('Hidden Unit Activations Over Time (Elman 1990, Figure 4)', 
+                 fontsize=14, fontweight='bold')
+    
+    for i in range(n_hidden):
+        row = i // n_cols
+        col = i % n_cols
+        ax = axes[row, col]
+        
+        # Plot activation over time
+        ax.plot(activations[i, :], linewidth=1.5)
+        ax.set_ylim(0, 1)
+        ax.set_title(f'Unit {i+1}', fontsize=9)
+        ax.grid(True, alpha=0.3)
+        
+        # Add letter labels on x-axis
+        if row == n_rows - 1:  # Bottom row
+            ax.set_xlabel('Time', fontsize=8)
+            # Show some letter labels
+            tick_positions = range(0, max_steps, 3)
+            ax.set_xticks(tick_positions)
+            ax.set_xticklabels([letters[i] if i < len(letters) else '' 
+                               for i in tick_positions], fontsize=7)
+        else:
+            ax.set_xticks([])
+        
+        if col == 0:  # Left column
+            ax.set_ylabel('Activation', fontsize=8)
+        
+    plt.tight_layout()
+    
+    # Save
+    import os
+    from datetime import datetime
+    
+    output_dir = '/mnt/user-data/outputs' if os.path.exists('/mnt/user-data') else './outputs'
+    os.makedirs(output_dir, exist_ok=True)
+    
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'elman_figure4_hidden_activations_{timestamp}.png'
+    save_path = os.path.join(output_dir, filename)
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    print(f"\nFigure 4 (Hidden Activations) saved to: {save_path}")
+    
+    return activations
 
 def analyze_bit_errors(predictions, targets, bit_names=None):
     """
@@ -368,7 +515,7 @@ def analyze_bit_errors(predictions, targets, bit_names=None):
 # Example Usage
 # ============================================================================
 
-def test_xor_task():
+def xor_task():
     """Test the XOR task"""
     print("=" * 70)
     print("XOR Task Test")
@@ -389,7 +536,7 @@ def test_xor_task():
     
     # Test predictions
     test_sequence = sequence[:20]
-    network.reset_context()
+    network.reset_context() #Reset context to zeros
     predictions = network.predict_sequence(test_sequence)
     
     print("Actual Output vs Expected Output:")
@@ -414,10 +561,63 @@ def test_xor_task():
     print(f"Accuracy: {correct}/{len(predictions)} = {accuracy:.1f}%")
     print()
     
+    # Test predictions of third bit only.
+    # Uncomment the following to see accuracy at only the XOR output positions.
+    # print("Actual vs Expected Only At XOR Positions:")
+    # print("Time | Input | Actual Out 3 | Rounded Out | Expected | Match")
+    # print("-" * 60)
+    
+    # correct = 0
+    # for i in range(1, len(predictions), 3):
+    #     input_val = test_sequence[i]
+    #     expect = test_sequence[i + 1]
+    #     actual = predictions[i][0, 0]
+    #     actual_rounded = 1 if actual > 0.5 else 0
+    #     match = "✓" if expect == actual_rounded else "✗"
+
+    #     if expect == actual_rounded:
+    #         correct += 1
+
+    #     print(f" {i:2d}  |   {input_val}   |   {actual:.4f}   |      {actual_rounded}      |     {expect}    |  {match}")
+
+    # accuracy = (correct / (len(predictions) // 3)) * 100
+    # print("-" * 60)
+    # print(f"Accuracy3: {correct}/{round(len(predictions)/3)} = {accuracy:.0f}%")
+    # print()
+    
+    # Error rate at each position.
+    # I want something that looks at errors at each of the three positions separately.
+    # I want the root mean square error at each position.
+    # Uncomment the following to see error rates by position in group of 3.
+    
+    # position_errors = [0, 0, 0]
+    # position_counts = [0, 0, 0]
+    # for i in range(len(predictions)):
+    #     input_val = test_sequence[i]
+    #     expect = test_sequence[i + 1]
+    #     actual = predictions[i][0, 0]
+    #     actual_rounded = 1 if actual > 0.5 else 0
+
+    #     pos = i % 3
+    #     position_counts[pos] += 1
+    #     if expect != actual_rounded:
+    #         position_errors[pos] += 1
+    # print("Error Rate by Position in Group of 3:")
+    # print("Position | Errors | Total | Error Rate")
+    # print("-" * 40)
+    # for pos in range(3):
+    #     errors = position_errors[pos]
+    #     total = position_counts[pos]
+    #     error_rate = (errors / total) * 100
+    #     print(f"   {pos}     |  {errors:3d}  |  {total:3d} |   {error_rate:.2f}%")
+    # print()
+        
+        
+    
     return network, losses
 
 
-def test_cv_task():
+def cv_task():
     """Test the Consonant-Vowel task"""
     print("=" * 70)
     print("Consonant-Vowel Task Test")
@@ -427,7 +627,7 @@ def test_cv_task():
     network = ElmanNetwork(n_input=6, n_hidden=20, n_output=6, learning_rate=0.1)
     
     # Generate CV sequence
-    sequence, letters = generate_cv_sequence(300, seed=42)
+    sequence, letters = generate_cv_sequence(1000, seed=42)
     print(f"First 20 letters: {''.join(letters[:20])}")
     print(f"Sequence length: {len(sequence)} vectors")
     print()
@@ -439,7 +639,7 @@ def test_cv_task():
     
     # Test predictions on new sequence
     test_sequence, test_letters = generate_cv_sequence(60, seed=123)
-    network.reset_context()
+    network.reset_context() #Reset context to zeros
     predictions = network.predict_sequence(test_sequence)
     
     # Calculate errors
@@ -466,6 +666,14 @@ def test_cv_task():
     
     print()
     
+    print("Generating Hidden Unit Activations...")
+    activations = plot_hidden_unit_activations(network, test_sequence, test_letters, max_steps=30)
+    
+    # Generate Figure 4 - Prediction errors by letter
+    print("Generating Figure 4 (Prediction Errors by Letter)...")
+    plot_figure4_prediction_errors(test_letters, errors, max_steps=30)
+    
+    
     return network, losses, bit_errors
 
 
@@ -490,14 +698,14 @@ def main(task='both'):
     
     # Run XOR task if requested
     if task in ['XOR', 'BOTH']:
-        xor_network, xor_losses = test_xor_task()
+        xor_network, xor_losses = xor_task()
         
         if task == 'BOTH':
             print("\n" + "=" * 70 + "\n")
     
     # Run CV task if requested
     if task in ['CV', 'BOTH']:
-        cv_network, cv_losses, bit_errors = test_cv_task()
+        cv_network, cv_losses, bit_errors = cv_task()
     
     # Plot results if matplotlib available
     try:
@@ -559,7 +767,9 @@ def main(task='both'):
             plt.title('XOR Task: Training Loss')
             plt.grid(True, alpha=0.3)
             
-            save_path = os.path.join(output_dir, 'elman_xor_training.png')
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f'elman_xor_training_{timestamp}.png'
+            save_path = os.path.join(output_dir, filename)
             plt.savefig(save_path, dpi=150, bbox_inches='tight')
             print(f"\nPlot saved to: {save_path}")
             
@@ -593,9 +803,12 @@ def main(task='both'):
             
             plt.tight_layout()
             
-            save_path = os.path.join(output_dir, 'elman_cv_analysis.png')
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f'elman_cv_training_{timestamp}.png'
+            save_path = os.path.join(output_dir, filename)
             plt.savefig(save_path, dpi=150, bbox_inches='tight')
-            print(f"\nPlots saved to: {save_path}")
+            print(f"\nCV Plot saved to: {save_path}")
+            
         
     except ImportError:
         print("\nMatplotlib not available, skipping plots")
@@ -608,6 +821,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         task_arg = sys.argv[1]
     else:
-        task_arg = 'xor'
+        task_arg = 'cv'
     
     main(task=task_arg)
